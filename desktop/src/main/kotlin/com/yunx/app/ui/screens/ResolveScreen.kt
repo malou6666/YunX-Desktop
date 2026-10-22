@@ -75,6 +75,7 @@ import com.yunx.app.data.network.SharePlatform
 import com.yunx.app.data.network.model.ShareFile
 import com.yunx.app.ui.SnackbarController
 import com.yunx.app.ui.components.GitHubMarkdownImageTransformer
+import com.yunx.app.ui.components.rememberDownloadDirPicker
 import com.yunx.app.ui.resolve.DownloadLinkDialog
 import com.yunx.app.ui.resolve.LinkHistoryDialog
 import com.yunx.app.ui.resolve.ShareDetailScreen
@@ -126,6 +127,7 @@ fun ResolveScreen(
     val state = viewModel.uiState
     val downloadLink = viewModel.downloadLink
     val downloadError = viewModel.downloadError
+    val pickDownloadDir = rememberDownloadDirPicker()
 
     // 输入框状态提升到页面层：进入详情/文件夹再返回时不清空
     var link by rememberSaveable { mutableStateOf("") }
@@ -179,6 +181,16 @@ fun ResolveScreen(
     LaunchedEffect(link) {
         if (!pwdEdited && pwd.isEmpty()) {
             ShareLinkParser.parse(link)?.pwd?.let { pwd = it }
+        }
+    }
+
+    // 解析失败时把原文回填到输入框。典型场景：剪贴板弹窗点「打开」，但链接没带提取码导致解析失败 ——
+    // 回填后用户只要再补一个提取码即可重试，不必把链接重新粘贴一次。
+    LaunchedEffect(viewModel.prefillRequest) {
+        viewModel.consumePrefill()?.let { text ->
+            link = text
+            // 让下面的自动匹配提取码重新生效（否则上一次的「手动输入过」会把匹配挡掉）
+            pwdEdited = false
         }
     }
 
@@ -419,7 +431,9 @@ fun ResolveScreen(
         DownloadLinkDialog(
             link = link,
             onDownload = { viewModel.startDownload(link) },
-            onDismiss = { viewModel.dismissDownloadDialog() }
+            onDismiss = { viewModel.dismissDownloadDialog() },
+            saveDir = viewModel.pendingSaveDir.takeIf { it.isNotBlank() },
+            onChangeSaveDir = { pickDownloadDir { viewModel.chooseDownloadDir(it) } }
         )
     }
 
